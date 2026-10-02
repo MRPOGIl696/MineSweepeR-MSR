@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nervous Minesweeper</title>
+
+  <style>
+    /* ---------- Colors ---------- */
+    :root {
+      color-scheme: dark;
+      --bg: #0d0f14;
+      --text: #e8eaf0;
+      --cell: #1f2430;
+      --cell-open: #12151c;
+      --red: #ff2d3d;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; }
+
+    /* ---------- Page ---------- */
+    body {
+      margin: 0;
+      padding: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      transition: background 0.3s;
+    }
+
+    /* Tension keeps the colorful look: a colored glow around the screen (see body::before below) */
+
+    h1 {
+      font-size: 20px;
+      margin: 4px 0 10px;
+    }
+
+    /* ---------- Timer bar and idle bar ---------- */
+    .bar {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .idle {
+      width: 100%;
+      max-width: 400px;
+      height: 8px;
+      margin-bottom: 10px;
+      background: var(--cell);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #fill {
+      height: 100%;
+      width: 0;
+      background: #4ade80;
+    }
+
+    /* ---------- Grid and tiles ---------- */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);  /* change together with GRID_SIZE in the script */
+      gap: 3px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .tile {
+      aspect-ratio: 1;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: var(--cell);
+      color: var(--text);
+      font-size: clamp(14px, 4.5vw, 20px);
+      font-weight: 800;
+    }
+
+    .tile.open { background: var(--cell-open); }
+    .tile.bomb { background: var(--red); }
+
+    /* Number colors */
+    .n1 { color: #60a5fa; }
+    .n2 { color: #4ade80; }
+    .n3 { color: #f87171; }
+    .n4 { color: #c084fc; }
+    .n5, .n6, .n7, .n8 { color: #fbbf24; }
+
+    /* ---------- Flag button ---------- */
+    .tools {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .tool-btn {
+      padding: 10px 14px;
+      border: 1px solid #333a4a;
+      border-radius: 8px;
+      background: var(--cell);
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .tool-btn.on { background: #3b82f6; }
+
+    /* ---------- Start / Game over screen ---------- */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.88);
+    }
+
+    #overlay h2 {
+      margin: 0;
+      font-size: 38px;
+    }
+
+    #overlay p {
+      max-width: 320px;
+      margin: 0;
+      line-height: 1.4;
+      opacity: 0.85;
+    }
+
+    #nameInput {
+      width: 240px;
+      padding: 12px 14px;
+      border: 1px solid #333a4a;
+      border-radius: 10px;
+      background: var(--cell);
+      color: var(--text);
+      font-size: 18px;
+      text-align: center;
+    }
+
+    #nameInput.error { border-color: var(--red); }
+
+    #overlay button {
+      padding: 14px 30px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--red);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    /* ---------- v2: menu, levels, shop, demo ---------- */
+    #overlay { overflow-y: auto; justify-content: flex-start; align-items: stretch; z-index: 10; }
+    .card { margin: auto; width: 100%; max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    #overlay h2 { font-size: 30px; }
+    #overlayText:empty { display: none; }
+    .stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; font-size: 13px; opacity: 0.85; }
+    #info { text-align: left; font-size: 14px; line-height: 1.45; }
+    #info ul { margin: 6px 0 0; padding-left: 18px; }
+    .credit { margin-top: 10px; text-align: center; font-weight: 700; color: #fbbf24; opacity: 0; animation: pop 0.7s 1.5s forwards; }
+    @keyframes pop { 0% { opacity: 0; transform: scale(0.6); } 70% { transform: scale(1.12); } 100% { opacity: 1; transform: scale(1); } }
+    .row { display: flex; gap: 8px; width: 100%; justify-content: center; }
+    #overlay button.diff { flex: 1; padding: 10px 4px; font-size: 13px; line-height: 1.3; background: var(--cell); border: 1px solid #333a4a; }
+    #overlay button.diff.sel { outline: 3px solid #fff; transform: scale(1.06); }
+    #overlay button.sec { padding: 10px 16px; font-size: 15px; background: var(--cell); border: 1px solid #333a4a; }
+    #grid.big { gap: 2px; }
+    #grid.big .tile { font-size: 12px; border-radius: 3px; }
+
+    .screen { position: fixed; inset: 0; z-index: 20; display: none; overflow-y: auto; padding: 20px; background: rgba(0, 0, 0, 0.94); }
+    .screen button { padding: 10px 16px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 15px; font-weight: 700; }
+    .screen button:disabled { opacity: 0.45; }
+    .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 1px solid #333a4a; border-radius: 8px; }
+    .swatch { width: 34px; height: 34px; border-radius: 6px; border: 1px solid #555; }
+    .grow { flex: 1; text-align: left; }
+    #demoGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: 180px; }
+    #demoCap { min-height: 64px; text-align: center; line-height: 1.4; }
+    #demoFill { height: 100%; width: 0; background: #4ade80; transition: width 2.5s linear, background 2.5s; }
+
+    /* ---------- v3: colorful look + touch controls ---------- */
+    :root { --bg: linear-gradient(160deg, #1b1464, #4c1d95 55%, #0e7490); }
+    h1, #overlay h2 {
+      font-weight: 900;
+      background: linear-gradient(90deg, #ffd93d, #ff6b6b, #c084fc, #4ade80);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    h1 { font-size: 28px; }
+    .bar span { padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); }
+    .tile {
+      background: linear-gradient(160deg, #5b9bff, #3563e9);
+      box-shadow: 0 3px 0 #1e3a9e;
+      touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .tile.open { background: #1a2246; box-shadow: none; }
+    .tile.bomb { background: linear-gradient(160deg, #ff6b6b, #e11d2e); box-shadow: none; }
+    .tile.holding { transform: scale(0.86); box-shadow: 0 0 0 3px #fbbf24 inset; }
+    .tile.flagpop { animation: flagpop 0.4s; }
+    @keyframes flagpop {
+      0%   { transform: scale(0.8); }
+      50%  { transform: scale(1.25); box-shadow: 0 0 14px 4px #fbbf24; }
+      100% { transform: scale(1); }
+    }
+    .hint { margin-top: 8px; font-size: 13px; opacity: 0.8; }
+    .tool-btn { background: #7c3aed; border-color: #a78bfa; font-weight: 700; }
+    .tool-btn.on { background: #f59e0b; border-color: #fcd34d; }
+    #overlay { background: radial-gradient(circle at 30% 15%, #4c1d95, #0d0f2b 75%); }
+    #overlay .card {
+      padding: 18px; border-radius: 22px;
+      background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    .tag { text-align: center; font-size: 14px; }
+    #info { font-size: 15px; }
+    #overlay #startBtn { width: 100%; font-size: 20px; background: linear-gradient(180deg, #34d399, #059669); box-shadow: 0 4px 0 #065f46; }
+    #overlay button.diff[data-level="easy"]   { background: #10b981; border: 0; }
+    #overlay button.diff[data-level="medium"] { background: #f59e0b; border: 0; }
+    #overlay button.diff[data-level="hard"]   { background: #ef4444; border: 0; }
+    #demoDots { display: flex; gap: 6px; }
+    #demoDots span { width: 9px; height: 9px; border-radius: 50%; background: #555; }
+    #demoDots span.on { background: #fbbf24; }
+    .screen button.link { background: none; font-weight: 400; opacity: 0.7; text-decoration: underline; }
+
+    /* ---------- v4: colorful tension, hold ring, win/lose effects ---------- */
+    body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+    body.tense::before { background: radial-gradient(circle at 50% 40%, transparent 25%, rgba(120, 40, 200, 0.55)); }
+    body.panic::before {
+      background: radial-gradient(circle at 50% 45%, rgba(255, 60, 172, 0.25), rgba(255, 120, 0, 0.7));
+      animation: panicfx 0.7s linear infinite;
+    }
+    @keyframes panicfx {
+      0%   { filter: hue-rotate(0deg);   opacity: 0.75; }
+      50%  { opacity: 1; }
+      100% { filter: hue-rotate(360deg); opacity: 0.75; }
+    }
+    body.tense .tile:not(.open) { filter: saturate(1.3) brightness(0.88); }
+    body.panic .tile:not(.open) { filter: saturate(1.9) brightness(1.15); }
+
+    @property --a { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+    .tile { position: relative; }
+    .tile.holding::after {                       /* circle that fills up while you hold */
+      content: ''; position: absolute; inset: 18%; border-radius: 50%;
+      background: conic-gradient(#fbbf24 var(--a), rgba(255, 255, 255, 0.3) 0);
+      animation: ringfill 0.45s linear forwards;
+    }
+    @keyframes ringfill { from { --a: 0deg; } to { --a: 360deg; } }
+    .tile.glow { outline: 3px solid #fbbf24; animation: glow 1s infinite; }
+    @keyframes glow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    .tile.near { box-shadow: 0 0 0 3px #fbbf24 inset; }
+
+    #demoTitle { margin: 0; color: #fbbf24; }
+    #overlayText { white-space: pre-line; }
+    .bestbox { width: 100%; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); text-align: center; font-size: 13px; white-space: pre-line; }
+
+    #fx { position: fixed; inset: 0; z-index: 30; pointer-events: none; display: none; flex-direction: column; align-items: center; justify-content: center; }
+    .winbig { font-size: 64px; font-weight: 900; color: #fbbf24; text-shadow: 0 4px 0 #b45309; animation: pop 0.6s both; }
+    .winsub { font-size: 34px; font-weight: 800; animation: pop 0.6s 0.2s both; }
+    .coinfly { position: fixed; left: 50%; top: 52%; font-size: 28px; transition: transform 0.8s ease-in, opacity 0.8s; }
+    .flash { position: fixed; inset: 0; background: rgba(255, 30, 60, 0.55); animation: flashout 0.6s forwards; }
+    @keyframes flashout { to { opacity: 0; } }
+    #grid.shake { animation: shake 0.5s; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-10px); } 40% { transform: translateX(10px); } 60% { transform: translateX(-7px); } 80% { transform: translateX(7px); } }
+    #coins.bump { animation: bump 0.4s; }
+    @keyframes bump { 50% { transform: scale(1.35); } }
+
+    /* ---------- v5: game-window look (tabs, red close button, brick wall) ---------- */
+    :root { --ol: -2px -2px 0 #1c2b55, 2px -2px 0 #1c2b55, -2px 2px 0 #1c2b55, 2px 2px 0 #1c2b55, 0 3px 0 #1c2b55; }
+    @media (max-width: 420px) { h1 { font-size: 22px; } }
+
+    #settingsBtn {
+      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); right: 12px; z-index: 15;
+      width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 22px;
+      border: 3px solid #bfe0ff; background: linear-gradient(#4aa3ff, #2563eb); box-shadow: 0 3px 0 #1e3a8a;
+    }
+
+    .screen {
+      background-color: #1a2236;
+      background-image: linear-gradient(rgba(0, 0, 0, 0.28) 2px, transparent 2px), linear-gradient(90deg, rgba(0, 0, 0, 0.28) 2px, transparent 2px);
+      background-size: 100% 38px, 76px 38px;
+    }
+    .win { width: 100%; max-width: 360px; margin: 5vh auto; display: flex; flex-direction: column; align-items: center; color: #fff; }
+    .tabs { display: flex; width: 100%; gap: 4px; }
+    .screen .tab {
+      position: relative; flex: 1; padding: 12px 4px; text-align: center; font-size: 18px; font-weight: 900;
+      border: 3px solid #7fa6e8; border-bottom: 0; border-radius: 14px 14px 0 0;
+      background: linear-gradient(#264a9c, #1b3578); color: #c3cde6; text-shadow: var(--ol);
+    }
+    .screen .tab.sel { background: linear-gradient(#5b9bf0, #3a72c4); color: #fff; }
+    .panel { width: 100%; min-height: 280px; padding: 14px; border: 3px solid #7fa6e8; border-radius: 0 0 18px 18px; background: linear-gradient(#2c4a8c, #1e3568); }
+    .panel.center { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+    .screen .xbtn {
+      margin-top: 18px; width: 60px; height: 60px; padding: 0; border-radius: 50%; font-size: 30px; font-weight: 900;
+      border: 4px solid #f0b6b6; background: radial-gradient(circle at 35% 30%, #ff7b7b, #c81e1e); color: #fff; box-shadow: 0 4px 0 #7f1212;
+    }
+    .screen .cbtn {
+      padding: 10px 16px; border-radius: 12px; border: 3px solid #bfe0ff; font-weight: 900; text-shadow: var(--ol);
+      background: linear-gradient(#4aa3ff, #2563eb); color: #fff; box-shadow: 0 3px 0 #1e3a8a;
+    }
+    .screen .cbtn.green { background: linear-gradient(#4ade80, #16a34a); border-color: #c7f9d4; box-shadow: 0 3px 0 #166534; }
+    .screen .cbtn.wide { width: 100%; }
+    #overlay button.sec { position: relative; font-weight: 900; border: 3px solid #bfe0ff; background: linear-gradient(#4aa3ff, #2563eb); box-shadow: 0 3px 0 #1e3a8a; }
+    .badge {
+      position: absolute; top: -10px; right: -8px; min-width: 26px; height: 26px; padding: 0 5px; display: none;
+      align-items: center; justify-content: center; border-radius: 13px; border: 3px solid #fff;
+      background: #e11d2e; color: #fff; font-size: 14px; font-weight: 900;
+    }
+    .coinline { text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 10px; text-shadow: var(--ol); }
+    .screen .item { background: rgba(0, 0, 0, 0.25); border: 2px solid #5b83d6; margin-bottom: 6px; }
+    #demoGrid { margin: 0 auto; }
+    #demoDots { justify-content: center; }
+    .qtitle { margin: 12px 0 6px; font-size: 16px; font-weight: 900; text-shadow: var(--ol); }
+    .chips { display: flex; gap: 4px; margin-bottom: 8px; }
+    .chip { flex: 1; padding: 6px 0; text-align: center; font-size: 13px; font-weight: 900; border-radius: 8px; background: rgba(0, 0, 0, 0.3); border: 2px solid #5b83d6; }
+    .chip small { display: block; font-size: 10px; opacity: 0.8; }
+    .chip.done { background: #16a34a; border-color: #86efac; }
+    .chip.next { border-color: #fbbf24; animation: glow 1s infinite; }
+    .qrow { display: flex; align-items: center; gap: 8px; padding: 8px; margin-bottom: 6px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
+    .qbar { height: 8px; margin: 4px 0; border-radius: 4px; background: rgba(0, 0, 0, 0.4); overflow: hidden; }
+    .qbar div { height: 100%; background: linear-gradient(#fde047, #f59e0b); }
+    .brow { display: flex; justify-content: space-between; padding: 10px 12px; margin-bottom: 6px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); font-size: 18px; font-weight: 900; }
+    .small { font-size: 13px; opacity: 0.85; }
+    #volume { width: 100%; margin: 10px 0; }
+
+    /* ---------- v6: spy glass, stats table, toast ---------- */
+    .tile.spied { background: rgba(180, 220, 255, 0.18); box-shadow: none; }
+    .tile.spy-safe { outline: 3px solid #4ade80; }
+    .tile.spy-bomb { outline: 3px solid #ff2d3d; }
+    .tile.spied::before { content: attr(data-icon); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.3em; opacity: 0.9; pointer-events: none; }
+    .stbl { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 4px; margin-bottom: 8px; text-align: center; font-weight: 800; }
+    .stbl div { padding: 5px 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.22); }
+    .stbl .h { background: none; font-size: 12px; opacity: 0.8; }
+    .stbl .l { text-align: left; }
+    #toast {
+      position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); transform: translateX(-50%); z-index: 60;
+      display: none; max-width: 90%; padding: 10px 16px; border-radius: 14px; text-align: center; font-weight: 800;
+      background: rgba(10, 14, 30, 0.95); border: 2px solid #fbbf24; color: #fff;
+    }
+  </style>
+</head>
+
+<body>
+  <button id="settingsBtn" aria-label="Settings">⚙️</button>
+  <h1>💣 Nervous Minesweeper</h1>
+
+  <div class="bar">
+    <span id="timeLeft">⏱ 60</span>
+    <span id="coins">🪙 0</span>
+    <span id="bombCount">💣 10</span>
+  </div>
+  <div class="idle"><div id="fill"></div></div>
+
+  <div id="grid"></div>
+
+  <div class="tools">
+    <button class="tool-btn" id="flagBtn">🚩 Flag mode: off</button>
+    <button class="tool-btn" id="spyBtn">🔍 Spy ×0</button>
+  </div>
+  <div class="hint">Tap to open · Hold to flag 🚩 · 🔍 Spy peeks through a tile</div>
+
+  <div id="overlay">
+    <div class="card">
+      <h2 id="overlayTitle">Nervous Minesweeper</h2>
+      <p class="tag">🎮 A fast, spooky puzzle game. Free, no sign-up, just play!</p>
+      <div class="stats"><span id="visited">👥 … people visited</span><span id="played">🎮 … people played</span></div>
+      <p id="overlayText"></p>
+
+      <div id="info">
+        <b>How to play</b>
+        <ul>
+          <li>Type your username and pick a level.</li>
+          <li>Tap a tile to open it. The number shows how many bombs touch that tile.</li>
+          <li>Open every safe tile. Hit a bomb and you lose!</li>
+          <li>Touch and hold a tile (or right-click) to plant a flag 🚩 on a suspected bomb. Hold again to remove it.</li>
+          <li>Tap an opened number to highlight the closed tiles around it.</li>
+          <li>Buy 🔍 Spy Glasses in the Shop. Tap Spy, then a closed tile, to see through it: ✅ safe or 💣 bomb. (Open a tile first.)</li>
+          <li>Beat the clock! When time is almost out, the panic alarm starts: the last 10 seconds on Easy, the last 20 on Medium and Hard.</li>
+          <li>Win to earn coins 🪙 and spend them in the Shop on new backgrounds.</li>
+        </ul>
+        <div class="credit">Made by: mrpogi herr. J. Cris</div>
+      </div>
+
+      <input id="nameInput" maxlength="16" placeholder="Enter your username" autocomplete="off">
+      <div id="welcome" class="tag"></div>
+      <div id="bestBox" class="bestbox"></div>
+      <div class="row">
+        <button class="diff sel" data-level="easy">Easy<br>5×5 · +20🪙</button>
+        <button class="diff" data-level="medium">Medium<br>9×9 · +50🪙</button>
+        <button class="diff" data-level="hard">Hard<br>15×15 · +100🪙</button>
+      </div>
+      <button id="startBtn">Start</button>
+      <div class="row">
+        <button class="sec" id="demoBtn">▶ Demo</button>
+        <button class="sec" id="shopBtn">🛍 Shop<span class="badge" id="menuBadge"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shop" class="screen">
+    <div class="win">
+      <div class="tabs">
+        <button class="tab sel" data-tab="shop">Shop</button>
+        <button class="tab" data-tab="quests">Quests<span class="badge" id="questBadge"></span></button>
+        <button class="tab" data-tab="best">Stats<span class="badge" id="statsBadge"></span></button>
+      </div>
+      <div class="panel">
+        <div id="shopCoins" class="coinline">🪙 0</div>
+        <div id="tabShop"><div id="shopList"></div></div>
+        <div id="tabQuests" style="display:none"></div>
+        <div id="tabBest" style="display:none"></div>
+      </div>
+      <button class="xbtn" id="shopClose">✕</button>
+    </div>
+  </div>
+
+  <div id="demo" class="screen">
+    <div class="win">
+      <div class="tabs"><div class="tab sel">Tutorial</div></div>
+      <div class="panel center">
+        <h3 id="demoTitle"></h3>
+        <div id="demoGrid"></div>
+        <div class="idle"><div id="demoFill"></div></div>
+        <div id="demoCap"></div>
+        <div id="demoDots"></div>
+        <div class="row">
+          <button class="cbtn" id="demoBack">← Back</button>
+          <button class="cbtn green" id="demoNext">Next →</button>
+        </div>
+        <button class="link" id="demoSkip">Skip Tutorial</button>
+      </div>
+      <button class="xbtn" id="demoClose">✕</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen" style="z-index: 40">
+    <div class="win">
+      <div class="tabs"><div class="tab sel">⚙️ Settings</div></div>
+      <div class="panel">
+        <div class="qtitle">🔊 Volume: <span id="volVal">50</span></div>
+        <input type="range" id="volume" min="0" max="100" value="50">
+        <div class="small">Music and sound effects. The default is 50.</div>
+      </div>
+      <button class="xbtn" id="settingsClose">✕</button>
+    </div>
+  </div>
+
+  <div id="fx"></div>
+
+  <div id="toast"></div>
+  <script>
+    /* =====================================================
+       SETTINGS: change these to tweak the game
+       ===================================================== */
+    // Levels: board size, bombs, seconds for the whole game, seconds left when the alarm starts, coin reward
+    const DIFF = {
+      easy:   { size: 5,  bombs: 4,  time: 30,  alarm: 10, reward: 20  },
+      medium: { size: 9,  bombs: 10, time: 120,  alarm: 20, reward: 50  },
+      hard:   { size: 15, bombs: 35, time: 240, alarm: 20, reward: 100 },
+    };
+    let difficulty = 'easy';
+    let GRID_SIZE = 5, BOMB_COUNT = 4, TOTAL_TIME = 30, ALARM_AT = 10;
+
+    function applyDifficulty() {
+      const d = DIFF[difficulty];
+      GRID_SIZE = d.size; BOMB_COUNT = d.bombs; TOTAL_TIME = d.time; ALARM_AT = d.alarm;
+    }
+
+    /* =====================================================
+       STATE
+       ===================================================== */
+    let tiles = [];          // one object per tile: { bomb, revealed, flagged, count, el }
+    let gameRunning = false;
+    let gameOver    = false;
+    let firstClick  = true;
+    let flagMode    = false;
+    let startTime   = 0;
+    let lastClick   = 0;
+    let gameLoop    = null;  // the interval that updates the timers
+    let playerName  = '';    // the username typed on the start screen
+
+    const $ = (id) => document.getElementById(id);
+
+    /* =====================================================
+       SOUND
+       Everything is generated by the browser (Web Audio API),
+       so no audio files are needed.
+       ===================================================== */
+    let audio = null;        // the audio context
+    let tension = 0;         // 0 = calm, 1 = tense, 2 = panic
+    let heartbeatTimer = null;
+    let stingTimer = null;
+    let dronePieces = [];    // oscillators to stop later
+    let sirenPieces = [];
+
+    // Play one short beep that fades out
+    function playTone(freq, duration, type, volume, endFreq) {
+      const now  = audio.currentTime;
+      const osc  = audio.createOscillator();
+      const gain = audio.createGain();
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain).connect(out());
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    // Create an oscillator that keeps playing until stopped
+    function startOscillator(freq, type, volume, lowpassFreq) {
+      const osc    = audio.createOscillator();
+      const gain   = audio.createGain();
+      const filter = audio.createBiquadFilter();
+
+      osc.type = type;
+      osc.frequency.value = freq;
+      filter.type = 'lowpass';
+      filter.frequency.value = lowpassFreq;
+      gain.gain.value = volume;
+
+      osc.connect(filter).connect(gain).connect(out());
+      osc.start();
+      return osc;
+    }
+
+    // Explosion: a burst of fading noise plus a low drop
+    function playExplosion() {
+      const length = audio.sampleRate * 1.6;
+      const buffer = audio.createBuffer(1, length, audio.sampleRate);
+      const data   = buffer.getChannelData(0);
+
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+      }
+
+      const source = audio.createBufferSource();
+      const filter = audio.createBiquadFilter();
+      const gain   = audio.createGain();
+
+      source.buffer = buffer;
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(3000, audio.currentTime);
+      filter.frequency.exponentialRampToValueAtTime(80, audio.currentTime + 1.5);
+      gain.gain.value = 1.2;
+
+      source.connect(filter).connect(gain).connect(out());
+      source.start();
+
+      playTone(120, 1.2, 'sine', 1, 25);
+    }
+
+    // Two thumps, repeated. Faster during panic.
+    function heartbeat() {
+      if (tension === 0) return;
+
+      playTone(62, 0.2, 'sine', 1.2, 36);
+      setTimeout(() => playTone(58, 0.16, 'sine', 0.6, 36), tension === 2 ? 130 : 190);
+
+      heartbeatTimer = setTimeout(heartbeat, tension === 2 ? 360 : 850);
+    }
+
+    function stopAllSounds() {
+      [...dronePieces, ...sirenPieces].forEach((osc) => {
+        try { osc.stop(); } catch (e) { /* already stopped */ }
+      });
+      dronePieces = [];
+      sirenPieces = [];
+      clearTimeout(heartbeatTimer);
+      clearInterval(stingTimer);
+    }
+
+    // Switch between calm (0), tense (1) and panic (2)
+    function setTension(level) {
+      if (!audio || level === tension) return;
+
+      stopAllSounds();
+      tension = level;
+      document.body.className = level === 1 ? 'tense' : level === 2 ? 'panic' : '';
+      if (level === 0) return;
+
+      // Low creepy drone (used in both tense and panic)
+      const wobbler = startOscillator(level === 2 ? 82.4 : 77.8, 'triangle', 0.05, 400);
+      dronePieces = [
+        startOscillator(55,   'sawtooth', 0.07, 220),
+        startOscillator(58.3, 'sawtooth', 0.07, 220),
+        wobbler,
+      ];
+
+      if (level === 1) {
+        // Tense: the drone wobbles slowly and a thin high note pings now and then
+        const lfo     = audio.createOscillator();
+        const lfoGain = audio.createGain();
+        lfo.frequency.value = 5;
+        lfoGain.gain.value = 40;
+        lfo.connect(lfoGain).connect(wobbler.detune);
+        lfo.start();
+        dronePieces.push(lfo);
+
+        stingTimer = setInterval(() => {
+          playTone(1180 + Math.random() * 60, 1.4, 'sine', 0.05, 1100);
+        }, 2600);
+      } else {
+        // Panic: a siren plus a screech that keeps rising in pitch
+        const siren     = audio.createOscillator();
+        const sirenGain = audio.createGain();
+        const lfo       = audio.createOscillator();
+        const lfoGain   = audio.createGain();
+
+        siren.type = 'square';
+        siren.frequency.value = 620;
+        lfo.frequency.value = 2.5;
+        lfoGain.gain.value = 260;
+        lfo.connect(lfoGain).connect(siren.frequency);
+        sirenGain.gain.value = 0.05;
+        siren.connect(sirenGain).connect(out());
+        siren.start();
+        lfo.start();
+
+        const riser     = audio.createOscillator();
+        const riserGain = audio.createGain();
+        riser.type = 'sawtooth';
+        riser.frequency.setValueAtTime(150, audio.currentTime);
+        riser.frequency.exponentialRampToValueAtTime(1800, audio.currentTime + 20);
+        riserGain.gain.value = 0.035;
+        riser.connect(riserGain).connect(out());
+        riser.start();
+
+        sirenPieces = [siren, lfo, riser];
+      }
+
+      heartbeat();
+    }
+
+    /* =====================================================
+       BOARD
+       ===================================================== */
+    function buildBoard() {
+      const grid = $('grid');
+      grid.innerHTML = '';
+      grid.style.gridTemplateColumns = 'repeat(' + GRID_SIZE + ', 1fr)';
+      grid.classList.toggle('big', GRID_SIZE > 9);
+      tiles = [];
+
+      for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const button = document.createElement('button');
+        button.className = 'tile';
+        attachTileEvents(button, i);
+        grid.appendChild(button);
+        tiles.push({ bomb: false, revealed: false, flagged: false, count: 0, el: button });
+      }
+    }
+
+    // Shows "🚩 flags placed / 💣 total bombs"
+    function updateFlagCount() {
+      const flags = tiles.filter((t) => t.flagged).length;
+      $('bombCount').textContent = '🚩 ' + flags + ' / 💣 ' + BOMB_COUNT;
+    }
+
+    // Tap an opened number: light up the closed tiles around it for a moment
+    function highlightAround(i) {
+      neighbors(i).filter((n) => !tiles[n].revealed).forEach((n) => {
+        const el = tiles[n].el;
+        el.classList.add('near');
+        setTimeout(() => el.classList.remove('near'), 1200);
+      });
+    }
+
+    // Personal best times (saved per username)
+    function renderBest() {
+      const fmt = (k) => (best[k] ? best[k].toFixed(2) + 's' : '—');
+      $('bestBox').textContent = 'PERSONAL BEST\nEasy ' + fmt('easy') + '   Medium ' + fmt('medium') + '   Hard ' + fmt('hard');
+    }
+
+    // WIN! +20 🪙, then coins fly to the coin counter
+    function celebrate(reward) {
+      const fx = $('fx');
+      fx.innerHTML = '<div class="winbig">WIN!</div><div class="winsub">+' + reward + ' 🪙</div>';
+      fx.style.display = 'flex';
+
+      const box = $('coins').getBoundingClientRect();
+      const dx = box.left + box.width / 2 - window.innerWidth / 2;
+      const dy = box.top + box.height / 2 - window.innerHeight * 0.52;
+
+      for (let n = 0; n < 6; n++) {
+        const coin = document.createElement('div');
+        coin.className = 'coinfly';
+        coin.textContent = '🪙';
+        coin.style.marginLeft = (n * 14 - 35) + 'px';
+        fx.appendChild(coin);
+        setTimeout(() => { coin.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(0.4)'; coin.style.opacity = '0.9'; }, 700 + n * 60);
+      }
+      setTimeout(() => {           // first coins have landed: update the counter
+        showCoins();
+        $('coins').classList.add('bump');
+        setTimeout(() => $('coins').classList.remove('bump'), 450);
+      }, 1500);
+      setTimeout(() => { fx.style.display = 'none'; fx.innerHTML = ''; }, 1900);
+    }
+
+    // Bomb: the board shakes and the screen flashes red
+    function loseFx() {
+      const grid = $('grid');
+      grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake');
+      const fx = $('fx');
+      fx.innerHTML = '<div class="flash"></div>';
+      fx.style.display = 'flex';
+      setTimeout(() => { fx.style.display = 'none'; fx.innerHTML = ''; }, 700);
+    }
+
+    // Plant or remove a flag. Returns true if something changed.
+    function toggleFlag(i) {
+      if (!gameRunning || gameOver) return false;
+      const tile = tiles[i];
+      if (tile.revealed) return false;
+      tile.flagged = !tile.flagged;
+      tile.el.textContent = tile.flagged ? '🚩' : '';
+      updateFlagCount();
+      return true;
+    }
+
+    // Tap = open. Hold (0.45s) or right-click = flag. A tap never fires after a successful hold.
+    let pressTimer = null;
+    let suppressClick = false;
+    let lastPointer = 'touch';   // 'touch' or 'mouse', so a phone's long-press menu can't flag a second time
+
+    function flagFeedback(btn) {
+      btn.classList.add('flagpop');                       // little pop + glow
+      setTimeout(() => btn.classList.remove('flagpop'), 400);
+      if (navigator.vibrate) navigator.vibrate(30);       // tiny buzz on phones that support it
+    }
+
+    function attachTileEvents(btn, i) {
+      const cancelHold = () => { clearTimeout(pressTimer); btn.classList.remove('holding'); };
+
+      btn.addEventListener('pointerdown', (e) => {
+        lastPointer = e.pointerType;
+        if (e.button > 0) return;                          // right-click is handled below
+        suppressClick = false;
+        btn.classList.add('holding');                      // shrinks + yellow ring while holding
+        pressTimer = setTimeout(() => {
+          btn.classList.remove('holding');
+          if (toggleFlag(i)) { suppressClick = true; flagFeedback(btn); }
+        }, 450);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach((name) => btn.addEventListener(name, cancelHold));
+
+      btn.addEventListener('click', () => {
+        if (suppressClick) { suppressClick = false; return; }   // this click is the end of a long press
+        clickTile(i);
+      });
+
+      btn.addEventListener('contextmenu', (e) => {         // right-click on computers, and the long-press menu on some phones
+        e.preventDefault();
+        if (lastPointer === 'mouse' && toggleFlag(i)) flagFeedback(btn);   // ignore phone long-press: the hold timer already did it
+      });
+    }
+
+    // Indexes of the tiles touching tile i (up to 8)
+    function neighbors(i) {
+      const row = Math.floor(i / GRID_SIZE);
+      const col = i % GRID_SIZE;
+      const result = [];
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const r = row + dy;
+          const c = col + dx;
+          if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE) {
+            result.push(r * GRID_SIZE + c);
+          }
+        }
+      }
+      return result;
+    }
+
+    // Bombs are placed after the first click so the first tile is always safe
+    function placeBombs(safeIndex) {
+      let placed = 0;
+      while (placed < BOMB_COUNT) {
+        const i = Math.floor(Math.random() * tiles.length);
+        if (i === safeIndex || tiles[i].bomb) continue;
+        tiles[i].bomb = true;
+        placed++;
+      }
+
+      tiles.forEach((tile, i) => {
+        tile.count = neighbors(i).filter((n) => tiles[n].bomb).length;
+      });
+    }
+
+    // Open a tile. If it has 0 bombs around it, open its neighbors too.
+    function revealTile(i) {
+      const tile = tiles[i];
+      if (tile.revealed || tile.flagged) return;
+
+      tile.revealed = true;
+      tile.el.classList.remove('spied', 'spy-bomb', 'spy-safe');
+      tile.el.classList.add('open');
+
+      if (tile.count > 0) {
+        tile.el.textContent = tile.count;
+        tile.el.classList.add('n' + tile.count);
+      } else {
+        neighbors(i).forEach(revealTile);
+      }
+    }
+
+    function showAllBombs() {
+      tiles.forEach((tile) => {
+        if (tile.bomb) {
+          tile.el.textContent = '💣';
+          tile.el.classList.add('bomb');
+        }
+      });
+    }
+
+    /* =====================================================
+       GAME FLOW
+       ===================================================== */
+    function clickTile(i) {
+      if (!gameRunning || gameOver) return;
+      const tile = tiles[i];
+
+      // Flag mode: place or remove a flag instead of opening
+      if (flagMode) { toggleFlag(i); return; }
+
+      if (spyMode) { useSpy(i); return; }                          // spy glass: look through this tile
+      if (tile.revealed) { if (tile.count > 0) highlightAround(i); return; }   // tap a number: highlight its neighbors
+      if (tile.flagged) return;
+
+      if (firstClick) {
+        placeBombs(i);
+        firstClick = false;
+      }
+
+      lastClick = Date.now();
+
+      if (tile.bomb) {
+        loseFx();
+        endGame('💥 BOOM!', 'Sorry ' + playerName + ', you hit a BOMB! HAHAHAHA nyare? ', true);
+        return;
+      }
+
+      revealTile(i);
+      playTone(520, 0.08, 'triangle', 0.25);
+
+      const allSafeOpened = tiles.every((t) => t.bomb || t.revealed);
+      if (allSafeOpened) {
+        winGame();
+        return;
+      }
+
+      const secondsLeft = TOTAL_TIME - (Date.now() - startTime) / 1000;
+      setTension(secondsLeft <= ALARM_AT ? 2 : 1);   // the alarm keeps going in the final countdown
+    }
+
+    function endGame(title, message, exploded, delay) {
+      recordGame(false);   // does nothing if a win was already counted
+      gameOver = true;
+      clearInterval(gameLoop);
+      stopAllSounds();
+      tension = 0;
+      document.body.className = '';
+
+      if (exploded) {
+        showAllBombs();
+        playExplosion();
+      }
+
+      // Small delay so the player sees the board before the screen appears
+      setTimeout(() => {
+        $('overlayTitle').textContent = title;
+        $('overlayText').textContent = message;
+        $('startBtn').textContent = 'Play again';
+        $('info').style.display = 'none';
+        $('overlay').style.display = 'flex';
+      }, delay || (exploded ? 900 : 200));
+    }
+
+    function winGame() {
+      const reward  = DIFF[difficulty].reward;
+      const seconds = (Date.now() - startTime) / 1000;
+      const isBest  = !best[difficulty] || seconds < best[difficulty];
+      if (isBest) best[difficulty] = seconds;
+      recordGame(true);                                     // counts the win (after the best time is saved)
+
+      addCoins(reward);                                     // saved right away, together with the best time
+      $('coins').textContent = '🪙 ' + (coins - reward);    // the counter updates when the flying coins land
+      renderBest();
+      celebrate(reward);
+
+      endGame('🎉 You survived!',
+        'Time: ' + seconds.toFixed(2) + 's' + (isBest ? '  🏆 New personal best!' : '') + '\n+' + reward + ' 🪙 coins earned!',
+        false, 1950);
+      playTone(660, 0.3, 'triangle', 0.3);
+      setTimeout(() => playTone(880, 0.4, 'triangle', 0.3), 200);
+    }
+
+    // Runs 10 times a second: updates the clock and starts the alarm near the end
+    function updateTimers() {
+      const now      = Date.now();
+      const timeLeft = Math.max(0, TOTAL_TIME - (now - startTime) / 1000);
+
+      $('timeLeft').textContent = '⏱ ' + Math.ceil(timeLeft);
+
+      // The bar shows the time left: green, then yellow, then red when the alarm starts
+      const fill = $('fill');
+      fill.style.width = (timeLeft / TOTAL_TIME) * 100 + '%';
+      fill.style.background =
+        timeLeft <= ALARM_AT ? '#ff2d3d' : timeLeft <= ALARM_AT * 2 ? '#fbbf24' : '#4ade80';
+
+      if (timeLeft > 0 && timeLeft <= ALARM_AT) setTension(2);   // alarm: only in the last seconds
+
+      if (timeLeft <= 0) {
+        showAllBombs();
+        endGame('⏰ Time\u2019s up', 'The clock hit zero. YOU LOSE.', false);
+        playTone(200, 1, 'sawtooth', 0.5, 50);
+      }
+    }
+
+    function startGame() {
+      // A username is required before playing
+      const input = $('nameInput');
+      playerName = input.value.trim();
+      if (!playerName) {
+        input.classList.add('error');
+        input.focus();
+        return;
+      }
+      input.classList.remove('error');
+      loadProfile(playerName);
+      save('mrp_last', playerName);   // remember the last name typed
+      if (!load('mrp_played2', '')) { save('mrp_played2', '1'); countPeople('plays', true).then((n) => showStat('played', '🎮 ', n, ' people played')); }
+
+      // Browsers only allow sound after a click, so the audio starts here
+      if (!audio) {
+        audio = new (window.AudioContext || window.webkitAudioContext)();
+        master = audio.createGain();
+        master.connect(audio.destination);
+        applyVolume();
+      }
+      if (audio.state === 'suspended') audio.resume();
+
+      applyDifficulty();
+      buildBoard();
+      gameRunning = true;
+      recorded    = false;
+      spyMode     = false;
+      updateSpyButton();
+      gameOver    = false;
+      firstClick  = true;
+      tension     = 0;
+      startTime   = lastClick = Date.now();
+
+      $('overlay').style.display = 'none';
+      $('timeLeft').textContent = '⏱ ' + TOTAL_TIME;
+      updateFlagCount();
+      $('fill').style.width = '100%';
+
+      clearInterval(gameLoop);
+      gameLoop = setInterval(updateTimers, 100);
+    }
+
+    /* =====================================================
+       SAVING (coins, owned backgrounds, counters) in this browser
+       ===================================================== */
+    const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+    const save = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } };
+
+    /* =====================================================
+       COINS AND SHOP
+       ===================================================== */
+    const SKINS = [
+      { id: 'default', name: 'Arcade Night', price: 0,   bg: 'linear-gradient(160deg,#1b1464,#4c1d95 55%,#0e7490)' },
+      { id: 'ocean',   name: 'Deep Ocean',   price: 30,  bg: 'linear-gradient(160deg,#04202f,#0b4a6f)' },
+      { id: 'forest',  name: 'Dark Forest',  price: 50,  bg: 'linear-gradient(160deg,#07160c,#14532d)' },
+      { id: 'sunset',  name: 'Sunset',       price: 80,  bg: 'linear-gradient(160deg,#3b0b3a,#c2410c)' },
+      { id: 'neon',    name: 'Neon City',    price: 100, bg: 'linear-gradient(160deg,#0f0326,#5b21b6 60%,#0891b2)' },
+      { id: 'gold',    name: 'Royal Gold',   price: 150, bg: 'linear-gradient(160deg,#1c1400,#a16207)' },
+    ];
+    // Each username has its own saved profile (coins, owned backgrounds, chosen background).
+    // Same name = same progress. A new name = a brand new player.
+    let coins  = 0;
+    let owned  = ['default'];
+    let skinId = 'default';
+    let best   = {};   // fastest winning time (seconds) for each level
+
+    const profileKey = (name) => 'mrp_p_' + name.trim().toLowerCase();   // "JC" and "jc" are the same player
+
+    // Loads a player's saved data. Returns true if this player has played before.
+    function loadProfile(name) {
+      let p = null;
+      try { p = JSON.parse(load(profileKey(name), '')); } catch (e) { p = null; }
+      coins  = p ? Number(p.coins) || 0 : 0;
+      owned  = p && Array.isArray(p.owned) ? p.owned : ['default'];
+      skinId = p && p.skin ? p.skin : 'default';
+      if (!owned.includes(skinId)) skinId = 'default';
+      applySkin();
+      showCoins();
+      best = p && p.best ? p.best : {};
+      prog = Object.assign(defaultProg(), p && p.prog ? p.prog : {});
+      glasses = p ? Number(p.glasses) || 0 : 0;
+      stats   = mergeStats(p && p.stats);
+      titles  = Object.assign(freshTitles(), p && p.titles ? p.titles : {});
+      spyMode = false;
+      updateSpyButton();
+      checkDay();
+      renderBest();
+      updateBadge();
+      return !!p;
+    }
+
+    function saveProfile() {
+      if (!playerName) return;
+      save(profileKey(playerName), JSON.stringify({ name: playerName, coins: coins, owned: owned, skin: skinId, best: best, prog: prog, glasses: glasses, stats: stats, titles: titles }));
+    }
+
+    // Shows "Welcome back" or "New player" under the username box
+    function refreshWelcome() {
+      const name = $('nameInput').value.trim();
+      const box  = $('welcome');
+      if (!name) { coins = 0; owned = ['default']; skinId = 'default'; best = {}; prog = defaultProg(); glasses = 0; stats = defaultStats(); titles = freshTitles(); updateSpyButton(); renderBest(); updateBadge(); applySkin(); showCoins(); box.textContent = ''; return; }
+      const returning = loadProfile(name);
+      box.textContent = returning
+        ? '👋 Welcome back, ' + titleTag() + name + '! 🪙 ' + coins + ' coins saved'
+        : '🆕 New player: you start with 0 coins';
+    }
+
+    function showCoins() {
+      $('coins').textContent = '🪙 ' + coins;
+      $('shopCoins').textContent = '🪙 ' + coins + ' coins   🔍 ' + glasses + ' spy glass' + (glasses === 1 ? '' : 'es');
+    }
+
+    function addCoins(n) { coins += n; saveProfile(); showCoins(); }
+
+    function applySkin() {
+      const skin = SKINS.find((x) => x.id === skinId) || SKINS[0];
+      document.body.style.setProperty('--bg', skin.bg);
+    }
+
+    function renderShop() {
+      const list = $('shopList');
+      list.innerHTML = '';
+      showCoins();
+
+      // Spy Glass: 50 coins each
+      const spyRow = document.createElement('div');
+      const spyIcon = document.createElement('span');
+      const spyLabel = document.createElement('span');
+      const spyBuy = document.createElement('button');
+      spyRow.className = 'item';
+      spyIcon.className = 'swatch';
+      spyIcon.textContent = '🔍';
+      spyIcon.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:20px;';
+      spyLabel.className = 'grow';
+      spyLabel.textContent = 'Spy Glass (you have ' + glasses + ')';
+      spyBuy.className = 'cbtn';
+      spyBuy.textContent = '🪙 50';
+      spyBuy.disabled = coins < 50;
+      spyBuy.onclick = () => { coins -= 50; glasses++; saveProfile(); updateSpyButton(); toast('🔍 +1 Spy Glass'); renderShop(); };
+      spyRow.append(spyIcon, spyLabel, spyBuy);
+      list.appendChild(spyRow);
+
+      SKINS.forEach((skin) => {
+        const row    = document.createElement('div');
+        const swatch = document.createElement('span');
+        const label  = document.createElement('span');
+        const btn    = document.createElement('button');
+        btn.className = 'cbtn';
+        row.className = 'item';
+        swatch.className = 'swatch';
+        swatch.style.background = skin.bg;
+        label.className = 'grow';
+        label.textContent = skin.name;
+
+        if (owned.includes(skin.id)) {
+          btn.textContent = skinId === skin.id ? 'Equipped' : 'Equip';
+          btn.disabled = skinId === skin.id;
+          btn.onclick = () => { skinId = skin.id; saveProfile(); applySkin(); renderShop(); };
+        } else {
+          btn.textContent = '🪙 ' + skin.price;
+          btn.disabled = coins < skin.price;
+          btn.onclick = () => {
+            coins -= skin.price;
+            owned.push(skin.id);
+            skinId = skin.id;
+            saveProfile();
+            applySkin(); renderShop();
+          };
+        }
+        row.append(swatch, label, btn);
+        list.appendChild(row);
+      });
+    }
+
+    /* =====================================================
+       SPY GLASSES, STATS AND TITLES (saved per username)
+       ===================================================== */
+    let glasses = 0;
+    let spyMode = false;
+    const defaultStats = () => ({ easy: { won: 0, lost: 0 }, medium: { won: 0, lost: 0 }, hard: { won: 0, lost: 0 } });
+    const freshTitles  = () => ({ claimed: {}, equipped: '', seen: {} });
+    let stats  = defaultStats();
+    let titles = freshTitles();
+
+    function mergeStats(x) {
+      const d = defaultStats();
+      if (x) ['easy', 'medium', 'hard'].forEach((k) => { if (x[k]) { d[k].won = Number(x[k].won) || 0; d[k].lost = Number(x[k].lost) || 0; } });
+      return d;
+    }
+
+    // Harder titles give better rewards. Spy glasses are the most useful reward.
+    const totalWins = () => stats.easy.won + stats.medium.won + stats.hard.won;
+    const TITLES = [
+      { id: 't1', name: 'Rookie',       desc: 'Win your first game',          check: () => totalWins() >= 1,                       coins: 20 },
+      { id: 't2', name: 'Bomb Dodger',  desc: 'Win 10 games',                 check: () => totalWins() >= 10,                      coins: 100 },
+      { id: 't3', name: 'Flag Master',  desc: 'Place 50 correct flags',       check: () => (prog.flagsTotal || 0) >= 50,           glasses: 1 },
+      { id: 't4', name: 'Speedrunner',  desc: 'Win Easy in under 15 seconds', check: () => !!best.easy && best.easy < 15,          glasses: 2 },
+      { id: 't5', name: 'Hard Hero',    desc: 'Win a Hard game',              check: () => stats.hard.won >= 1,                    glasses: 3 },
+      { id: 't6', name: 'Legend',       desc: 'Win 5 Hard games',             check: () => stats.hard.won >= 5,                    glasses: 5 },
+    ];
+
+    function titleTag() {
+      const t = TITLES.find((x) => x.id === titles.equipped);
+      return t ? '[' + t.name + '] ' : '';
+    }
+
+    function claimableTitles() {
+      return TITLES.filter((t) => t.check() && !titles.claimed[t.id]).length;
+    }
+
+    function claimTitle(t) {
+      titles.claimed[t.id] = true;
+      titles.equipped = t.id;
+      if (t.coins) coins += t.coins;
+      if (t.glasses) glasses += t.glasses;
+      saveProfile(); showCoins(); updateSpyButton(); renderBestTab(); updateBadge();
+      toast('🏅 ' + t.name + ' claimed!');
+    }
+
+    let toastTimer = null;
+    function toast(message) {
+      const box = $('toast');
+      box.textContent = message;
+      box.style.display = 'block';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { box.style.display = 'none'; }, 2400);
+    }
+
+    function updateSpyButton() {
+      const btn = $('spyBtn');
+      btn.textContent = '🔍 Spy ×' + glasses;
+      btn.classList.toggle('on', spyMode);
+    }
+
+    // Use one glass on a closed tile: it turns see-through and shows ✅ safe or 💣 bomb
+    function useSpy(i) {
+      const tile = tiles[i];
+      if (tile.revealed || tile.spied) return;
+      if (glasses <= 0) { spyMode = false; updateSpyButton(); return; }
+      glasses--;
+      saveProfile();
+      tile.spied = true;
+      tile.el.dataset.icon = tile.bomb ? '💣' : '✅';
+      tile.el.classList.add('spied', tile.bomb ? 'spy-bomb' : 'spy-safe');
+      spyMode = false;
+      updateSpyButton();
+      playTone(900, 0.25, 'sine', 0.25, 1500);
+      toast(tile.bomb ? '💣 That tile is a BOMB!' : '✅ That tile is safe!');
+    }
+
+    function renderBestTab() {
+      const box = $('tabBest');
+      box.innerHTML = '';
+      const heading = (t) => { const h = document.createElement('div'); h.className = 'qtitle'; h.textContent = t; box.appendChild(h); };
+
+      heading('📊 ' + titleTag() + playerName);
+      const table = document.createElement('div');
+      table.className = 'stbl';
+      const cell = (text, cls) => { const d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; table.appendChild(d); };
+      ['', 'Played', 'Won', 'Lost'].forEach((h) => cell(h, 'h'));
+      let won = 0, lost = 0;
+      [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].forEach(([k, label]) => {
+        won += stats[k].won; lost += stats[k].lost;
+        cell(label, 'l'); cell(stats[k].won + stats[k].lost); cell(stats[k].won); cell(stats[k].lost);
+      });
+      cell('Total', 'l'); cell(won + lost); cell(won); cell(lost);
+      box.appendChild(table);
+
+      heading('🏆 PERSONAL BEST');
+      [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].forEach(([k, label]) => {
+        const row = document.createElement('div'), a = document.createElement('span'), b = document.createElement('span');
+        row.className = 'brow';
+        a.textContent = label;
+        b.textContent = best[k] ? best[k].toFixed(2) + 's' : '—';
+        row.append(a, b);
+        box.appendChild(row);
+      });
+
+      heading('🎖️ Titles (harder titles give better rewards)');
+      TITLES.forEach((t) => {
+        const unlocked = t.check(), claimed = !!titles.claimed[t.id];
+        const row = document.createElement('div'), left = document.createElement('div'), name = document.createElement('div');
+        const desc = document.createElement('small'), reward = document.createElement('small'), btn = document.createElement('button');
+        row.className = 'qrow'; left.className = 'grow';
+        name.textContent = t.name;
+        name.style.fontWeight = '900';
+        desc.textContent = t.desc;
+        reward.textContent = ' · Reward: ' + (t.coins ? '+' + t.coins + ' 🪙' : '+' + t.glasses + ' 🔍 Spy Glass' + (t.glasses > 1 ? 'es' : ''));
+        left.append(name, desc, reward);
+        btn.className = 'cbtn green';
+        if (!unlocked) { btn.textContent = '🔒'; btn.disabled = true; }
+        else if (!claimed) { btn.textContent = 'Claim'; btn.onclick = () => claimTitle(t); }
+        else {
+          const on = titles.equipped === t.id;
+          btn.textContent = on ? 'Equipped' : 'Equip';
+          btn.disabled = on;
+          btn.onclick = () => { titles.equipped = t.id; saveProfile(); renderBestTab(); };
+        }
+        row.append(left, btn);
+        box.appendChild(row);
+      });
+    }
+
+    /* =====================================================
+       VOLUME (the settings ⚙️ button). 50 is the normal loudness.
+       ===================================================== */
+    let volume = Number(load('mrp_volume', 50));
+    if (!(volume >= 0 && volume <= 100)) volume = 50;
+    let master = null;                                  // one volume knob for all sounds
+    function out() { return master || audio.destination; }
+    function applyVolume() {
+      if (master) master.gain.value = volume / 50;
+      $('volVal').textContent = volume;
+    }
+
+    /* =====================================================
+       QUESTS AND DAILY REWARD (saved per username)
+       ===================================================== */
+    const DAILY_REWARDS = [10, 15, 20, 25, 30, 40, 100];   // Day 1 ... Day 7
+    const DAILY_QUESTS = [
+      { id: 'd1', text: 'Win 2 games',                key: 'dWins',    goal: 2,  reward: 25 },
+      { id: 'd2', text: 'Place 10 correct flags',     key: 'dFlags',   goal: 10, reward: 20 },
+      { id: 'd3', text: 'Win a Medium or Hard game',  key: 'dMedHard', goal: 1,  reward: 40 },
+    ];
+    const QUESTS = [
+      { id: 'q1', text: 'First win',         key: 'wins',   goal: 1,  reward: 25  },
+      { id: 'q2', text: 'Win 10 games',      key: 'wins',   goal: 10, reward: 100 },
+      { id: 'q3', text: 'Win a Medium game', key: 'medium', goal: 1,  reward: 40  },
+      { id: 'q4', text: 'Win a Hard game',   key: 'hard',   goal: 1,  reward: 100 },
+    ];
+
+    const defaultProg = () => ({ date: '', dWins: 0, dFlags: 0, dMedHard: 0, dClaimed: {}, wins: 0, medium: 0, hard: 0, claimed: {}, streak: 0, lastDaily: '', flagsTotal: 0 });
+    let prog = defaultProg();
+    let recorded = false;   // so one game is only counted once
+
+    const dayStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const todayStr = () => dayStr(new Date());
+    const yesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dayStr(d); };
+
+    function checkDay() {   // new day: daily quests start over
+      const t = todayStr();
+      if (prog.date !== t) { prog.date = t; prog.dWins = 0; prog.dFlags = 0; prog.dMedHard = 0; prog.dClaimed = {}; }
+    }
+
+    function dailyInfo() {
+      const claimedToday = prog.lastDaily === todayStr();
+      const continuing   = prog.lastDaily === yesterdayStr();          // claimed yesterday: the streak goes on
+      const nextDay      = continuing ? (prog.streak % 7) + 1 : 1;     // miss a day and it starts again at Day 1
+      return { claimedToday, nextDay, done: claimedToday ? prog.streak : nextDay - 1 };
+    }
+
+    function claimableCount() {
+      checkDay();
+      let n = dailyInfo().claimedToday ? 0 : 1;
+      DAILY_QUESTS.forEach((q) => { if (prog[q.key] >= q.goal && !prog.dClaimed[q.id]) n++; });
+      QUESTS.forEach((q) => { if (prog[q.key] >= q.goal && !prog.claimed[q.id]) n++; });
+      return n;
+    }
+
+    // Red number badge on the Shop button and the Quests tab
+    function updateBadge() {
+      const has = $('nameInput').value.trim() || playerName;
+      const q = has ? claimableCount() : 0;       // daily reward + quests
+      const t = has ? claimableTitles() : 0;      // titles ready to claim
+      const set = (id, n) => { const el = $(id); el.textContent = n; el.style.display = n ? 'flex' : 'none'; };
+      set('menuBadge', q + t); set('questBadge', q); set('statsBadge', t);
+    }
+
+    // Called once per game: counts wins and correct flags for the quests
+    function recordGame(won) {
+      if (recorded) return;
+      recorded = true;
+      checkDay();
+      const correct = tiles.filter((t) => t.flagged && t.bomb).length;
+      prog.dFlags += correct;
+      prog.flagsTotal = (prog.flagsTotal || 0) + correct;
+      stats[difficulty][won ? 'won' : 'lost']++;
+      if (won) {
+        prog.wins++; prog.dWins++;
+        if (difficulty === 'medium') prog.medium++;
+        if (difficulty === 'hard') prog.hard++;
+        if (difficulty !== 'easy') prog.dMedHard++;
+      }
+      TITLES.forEach((t) => {
+        if (t.check() && !titles.seen[t.id]) { titles.seen[t.id] = true; toast('🏅 New title unlocked: ' + t.name + '! Claim it in Shop > Stats'); }
+      });
+      saveProfile();
+      updateBadge();
+    }
+
+    function grant(n) { coins += n; saveProfile(); showCoins(); renderQuests(); updateBadge(); }
+
+    function claimDaily() {
+      checkDay();
+      const info = dailyInfo();
+      if (info.claimedToday) return;
+      prog.streak = info.nextDay;
+      prog.lastDaily = todayStr();
+      grant(DAILY_REWARDS[info.nextDay - 1]);
+    }
+
+    function renderQuests() {
+      checkDay();
+      const box = $('tabQuests');
+      box.innerHTML = '';
+      const title = (t) => { const h = document.createElement('div'); h.className = 'qtitle'; h.textContent = t; box.appendChild(h); };
+
+      title('🎁 Daily Reward');
+      const info = dailyInfo();
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      DAILY_REWARDS.forEach((r, i) => {
+        const c = document.createElement('div');
+        c.className = 'chip' + (i < info.done ? ' done' : '') + (!info.claimedToday && i === info.nextDay - 1 ? ' next' : '');
+        c.innerHTML = '<small>Day ' + (i + 1) + '</small>' + (i < info.done ? '✓' : '+' + r);
+        chips.appendChild(c);
+      });
+      box.appendChild(chips);
+      const claim = document.createElement('button');
+      claim.className = 'cbtn green wide';
+      claim.textContent = info.claimedToday ? 'Come back tomorrow!' : 'Claim +' + DAILY_REWARDS[info.nextDay - 1] + ' 🪙';
+      claim.disabled = info.claimedToday;
+      claim.onclick = claimDaily;
+      box.appendChild(claim);
+
+      const addRow = (q, value, claimedMap) => {
+        const done = value >= q.goal, got = !!claimedMap[q.id];
+        const row = document.createElement('div'), left = document.createElement('div');
+        const name = document.createElement('div'), bar = document.createElement('div'), fillBar = document.createElement('div');
+        const count = document.createElement('small'), btn = document.createElement('button');
+        row.className = 'qrow'; left.className = 'grow'; bar.className = 'qbar';
+        name.textContent = q.text;
+        fillBar.style.width = Math.min(100, (value / q.goal) * 100) + '%';
+        bar.appendChild(fillBar);
+        count.textContent = Math.min(value, q.goal) + ' / ' + q.goal;
+        left.append(name, bar, count);
+        btn.className = 'cbtn green';
+        btn.textContent = got ? '✓' : '+' + q.reward + ' 🪙';
+        btn.disabled = !done || got;
+        btn.onclick = () => { claimedMap[q.id] = true; grant(q.reward); };
+        row.append(left, btn);
+        box.appendChild(row);
+      };
+      title('📅 Daily Quests (reset every day)');
+      DAILY_QUESTS.forEach((q) => addRow(q, prog[q.key], prog.dClaimed));
+      title('🏆 Quests');
+      QUESTS.forEach((q) => addRow(q, prog[q.key], prog.claimed));
+    }
+
+    function showTab(name) {
+      document.querySelectorAll('#shop .tab').forEach((b) => b.classList.toggle('sel', b.dataset.tab === name));
+      $('tabShop').style.display   = name === 'shop'   ? 'block' : 'none';
+      $('tabQuests').style.display = name === 'quests' ? 'block' : 'none';
+      $('tabBest').style.display   = name === 'best'   ? 'block' : 'none';
+      if (name === 'shop') renderShop();
+      if (name === 'quests') renderQuests();
+      if (name === 'best') renderBestTab();
+    }
+
+    /* =====================================================
+       TUTORIAL: 5 steps, fully player-controlled (Back / Next / Skip).
+       A glowing tile shows what to touch. The bomb is the bottom-right tile.
+       ===================================================== */
+    let demoStep = 0;
+    let demoThenStart = false;
+
+    const DEMO_STEPS = [
+      { title: 'Open a tile', how: 'tap', target: [4],
+        text: 'Tap the glowing tile to open it. The number tells how many bombs touch it.',
+        run: (a) => a.open(4, 1) },
+      { title: 'Read the numbers', how: 'tap', target: [5, 7],
+        text: 'Tap a glowing tile. Both of these 1s touch the same corner tile. Where is the bomb?',
+        run: (a) => { a.open(5, 1); a.open(7, 1); } },
+      { title: 'Place a flag', how: 'hold', target: [8],
+        text: 'That corner must be the bomb! Touch and hold the glowing tile to plant a flag 🚩.',
+        run: (a) => { a.cell[8].textContent = '🚩'; } },
+      { title: 'Avoid the bombs',
+        text: 'Open a bomb and it is game over. Flags remind you where bombs are, so never tap a flagged tile.',
+        run: (a) => { a.cell[8].textContent = '💣'; a.cell[8].classList.add('bomb'); } },
+      { title: 'Beat the timer',
+        text: 'Clear every safe tile before time runs out. When the clock is almost at zero, the panic alarm starts. Hurry!',
+        run: (a) => { a.fill.style.width = '100%'; a.fill.style.background = '#ff2d3d'; } },
+    ];
+
+    // Makes the glowing tile(s) respond to a tap or a hold
+    function wireTarget(step, api) {
+      const clear = () => step.target.forEach((i) => {
+        api.cell[i].classList.remove('glow', 'holding');
+        api.cell[i].onclick = api.cell[i].onpointerdown = null;
+      });
+      const done = () => { clear(); step.run(api); $('demoCap').textContent = step.text + ' ✅'; };
+
+      step.target.forEach((i) => {
+        const t = api.cell[i];
+        t.classList.add('glow');
+        if (step.how === 'tap') { t.onclick = done; return; }
+
+        let timer;
+        const stop = () => { clearTimeout(timer); t.classList.remove('holding'); };
+        t.onpointerdown = () => { t.classList.add('holding'); timer = setTimeout(done, 450); };
+        t.onpointerup = t.onpointerleave = t.onpointercancel = stop;
+        t.oncontextmenu = (e) => e.preventDefault();
+      });
+    }
+
+    function renderDemo() {
+      const grid = $('demoGrid');
+      grid.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const t = document.createElement('div');
+        t.className = 'tile';
+        t.style.cssText = 'aspect-ratio:1;display:flex;align-items:center;justify-content:center;';
+        grid.appendChild(t);
+      }
+      const cell = [...grid.children];
+      const fill = $('demoFill');
+      fill.style.transition = 'none'; fill.style.width = '0'; fill.style.background = '#4ade80';
+      void fill.offsetWidth;   // restart the animation
+      fill.style.transition = 'width 2s linear, background 2s';
+
+      const api = {
+        cell, fill,
+        open: (i, n) => { cell[i].classList.add('open'); if (n) { cell[i].textContent = n; cell[i].classList.add('n' + n); } },
+      };
+
+      const step = DEMO_STEPS[demoStep];
+      for (let k = 0; k < demoStep; k++) DEMO_STEPS[k].run(api);   // earlier steps are already done
+      if (step.target) wireTarget(step, api); else step.run(api);
+
+      $('demoTitle').textContent = (demoStep + 1) + '/' + DEMO_STEPS.length + ' — ' + step.title;
+      $('demoCap').textContent = step.text;
+      $('demoDots').innerHTML = DEMO_STEPS.map((_, k) => '<span class="' + (k === demoStep ? 'on' : '') + '"></span>').join('');
+      $('demoBack').disabled = demoStep === 0;
+      $('demoNext').textContent = demoStep === DEMO_STEPS.length - 1 ? (demoThenStart ? 'Start playing ▶' : 'Done ✓') : 'Next →';
+    }
+
+    function openDemo(thenStart) {
+      demoThenStart = thenStart;
+      demoStep = 0;
+      renderDemo();
+      $('demo').style.display = 'block';
+    }
+
+    function closeDemo() {
+      $('demo').style.display = 'none';
+      save('mrp_demo', '1');
+      if (demoThenStart) startGame();
+    }
+
+    /* =====================================================
+       VISITOR AND PLAYER COUNTERS
+       Uses a free online counter. If it can't be reached, a dash is shown.
+       ===================================================== */
+    // Free counting service (https://abacus.jasoncameron.dev). "hit" adds 1, "get" only reads.
+    const COUNTER_URL = 'https://abacus.jasoncameron.dev/';
+    const COUNTER_ID  = 'mrpogil696-nervous-minesweeper';
+
+    async function countPeople(name, addOne) {
+      try {
+        const res = await fetch(COUNTER_URL + (addOne ? 'hit/' : 'get/') + COUNTER_ID + '/' + name);
+        if (res.status === 404) return 0;   // nobody has been counted yet
+        const data = await res.json();
+        return typeof data.value === 'number' ? data.value : null;
+      } catch (e) { return null; }
+    }
+
+    function showStat(id, before, n, after) {
+      $(id).textContent = before + (n === null ? '—' : n) + after;
+    }
+
+    function initExtras() {
+      $('volume').value = volume;
+      applyVolume();
+      $('nameInput').value = load('mrp_last', '');
+      refreshWelcome();
+
+      const newVisitor = !load('mrp_visited2', '');   // count each browser only once
+      save('mrp_visited2', '1');
+      countPeople('visits', newVisitor).then((n) => showStat('visited', '👥 ', n, ' people visited'));
+      countPeople('plays', false).then((n) => showStat('played', '🎮 ', n, ' people played'));
+    }
+
+    /* =====================================================
+       BUTTONS
+       ===================================================== */
+    $('startBtn').onclick = () => {
+      const input = $('nameInput');
+      if (!input.value.trim()) { input.classList.add('error'); input.focus(); return; }
+      if (!load('mrp_demo', '')) { openDemo(true); return; }   // first time: show the demo, then start
+      startGame();
+    };
+
+    document.querySelectorAll('.diff').forEach((btn) => {
+      btn.onclick = () => {
+        difficulty = btn.dataset.level;
+        document.querySelectorAll('.diff').forEach((b) => b.classList.toggle('sel', b === btn));
+      };
+    });
+
+    $('demoBtn').onclick   = () => openDemo(false);
+    $('demoClose').onclick = closeDemo;
+    $('spyBtn').onclick = () => {
+      if (!gameRunning || gameOver) return;
+      if (glasses <= 0) { toast('No spy glasses yet. Buy them in the Shop for 50 🪙!'); return; }
+      if (firstClick) { toast('Open a tile first, then use the spy glass.'); return; }
+      spyMode = !spyMode;
+      if (spyMode) { flagMode = false; $('flagBtn').classList.remove('on'); $('flagBtn').textContent = '🚩 Flag mode: off'; toast('🔍 Tap a closed tile to see through it'); }
+      updateSpyButton();
+    };
+    $('demoSkip').onclick  = closeDemo;
+    document.querySelectorAll('#shop .tab').forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+    $('settingsBtn').onclick   = () => { $('settings').style.display = 'block'; };
+    $('settingsClose').onclick = () => { $('settings').style.display = 'none'; };
+    $('volume').oninput = (e) => { volume = Number(e.target.value); save('mrp_volume', volume); applyVolume(); };
+    $('demoBack').onclick  = () => { if (demoStep > 0) { demoStep--; renderDemo(); } };
+    $('demoNext').onclick  = () => {
+      if (demoStep < DEMO_STEPS.length - 1) { demoStep++; renderDemo(); } else { closeDemo(); }
+    };
+    $('shopBtn').onclick   = () => {
+      const input = $('nameInput');
+      const name  = input.value.trim();
+      if (!name) {
+        input.classList.add('error'); input.focus();
+        $('welcome').textContent = 'Type your username first so your coins are saved to it.';
+        return;
+      }
+      playerName = name;
+      loadProfile(name);
+      showTab('shop');
+      $('shop').style.display = 'block';
+    };
+    $('nameInput').addEventListener('input', refreshWelcome);
+    $('shopClose').onclick = () => { $('shop').style.display = 'none'; };
+
+    $('flagBtn').onclick = (event) => {
+      flagMode = !flagMode;
+      spyMode = false; updateSpyButton();
+      event.target.classList.toggle('on', flagMode);
+      event.target.textContent = '🚩 Flag mode: ' + (flagMode ? 'on' : 'off');
+    };
+
+    buildBoard();   // draw an empty board behind the start screen
+    initExtras();
+  </script>
+</body>
+</html>
